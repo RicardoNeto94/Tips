@@ -1,22 +1,17 @@
-Shang Shi — Weighted Tip Allocator (v2)
+Shang Shi — Tip Allocator (v3: Column Mapper)
 
-What changed
-- Robust CSV parser with delimiter auto‑detect (comma, semicolon, tab, pipe)
-- UTF‑8/BOM handling and whitespace normalization
-- Debug panel to see detected delimiter, headers, row count, and sample keys
-- Clear alerts if required columns are missing or if no rows were parsed
+When uploads do nothing, it’s usually headers or delimiter. v3 removes that risk:
 
-Logic (unchanged)
-- Kitchen gets 25% of Pool if Kitchen Attendance = "Yes"
-- Remaining 75% distributed among present non‑kitchen staff, weighted by Value/4
-- Totals aggregated by Name
+- Drag & drop or upload CSV
+- Auto-detect delimiter (comma/semicolon/tab/pipe)
+- Column mapping UI: map your headers to Date, Name, Role, Attendance, Pool, Value
+- Paste-mode if files misbehave
+- Same weighted logic: Kitchen 25% if present; Staff 75% weighted by Value/4
 
-Required headers (case-insensitive): Date, Name, Role, Attendance, Pool, Value
+How to use
+1) Open index.html
+2) Upload or drop your CSV
+3) In “Map your columns”, choose the right fields (it tries to auto-guess)
+4) Click “Apply Mapping” → results render immediately
 
-Usage
-1) Open index.html → Upload your CSV (EU Excel exports with ; are fine).
-2) Use the Debug button if “nothing happens” — it will show exactly what was detected.
-3) Deploy as static site (GitHub Pages / Netlify / Vercel).
-
-Security
-- Client‑side only; your data stays in the browser.
+Deploy anywhere (GitHub Pages / Netlify / Vercel). 100% client-side.
