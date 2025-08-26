@@ -1,17 +1,14 @@
-Shang Shi — Tip Allocator (v3: Column Mapper)
+Shang Shi — Tip Allocator (v5: Weekly CSV Converter)
 
-When uploads do nothing, it’s usually headers or delimiter. v3 removes that risk:
+Manual Pool Entry
+- This build expects you to type Pool (€) per date in the on‑page editor.
+- Optional Weights CSV supported (same headers as weekly file) to weight staff share by Value/4.
 
-- Drag & drop or upload CSV
-- Auto-detect delimiter (comma/semicolon/tab/pipe)
-- Column mapping UI: map your headers to Date, Name, Role, Attendance, Pool, Value
-- Paste-mode if files misbehave
-- Same weighted logic: Kitchen 25% if present; Staff 75% weighted by Value/4
-
-How to use
+Workflow
 1) Open index.html
-2) Upload or drop your CSV
-3) In “Map your columns”, choose the right fields (it tries to auto-guess)
-4) Click “Apply Mapping” → results render immediately
+2) Upload Weekly CSV (Employee + date columns with Yes/No)
+3) (Optional) Upload Weights CSV (same headers; numeric values)
+4) Enter Pool amounts per date → Recompute
+5) Review Daily Allocation, Totals by Person, and the chart
 
-Deploy anywhere (GitHub Pages / Netlify / Vercel). 100% client-side.
+All client‑side. Deploy anywhere.

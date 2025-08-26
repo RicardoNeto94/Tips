@@ -1,251 +1,223 @@
-// v3: Column mapper + drag&drop + paste fallback
+// v5: Accept WEEKLY cross‑tab CSV (Employee + date columns), optional weights matrix, pools editor, pivot & compute
 (() => {
   const $ = sel => document.querySelector(sel);
+  const weeklyFile = $("#weeklyFile");
+  const weightsFile = $("#weightsFile");
   const alerts = $("#alerts");
+  const poolEditor = $("#poolEditor");
   const stats = $("#stats");
   const dailyHead = $("#thead-daily"), dailyBody = $("#tbody-daily");
   const totalHead = $("#thead-total"), totalBody = $("#tbody-total");
   const chartCanvas = $("#chart");
-  const debug = $("#debug"), debugOut = $("#debugOut");
-  const mapper = $("#mapper");
-  const dropzone = $("#dropzone");
-  const mapDate = $("#map-date"), mapName = $("#map-name"), mapRole = $("#map-role"),
-        mapAtt = $("#map-att"), mapPool = $("#map-pool"), mapVal = $("#map-val");
+  const recomputeBtn = $("#recompute");
+  const useWeights = $("#useWeights");
 
-  const CONFIG = { date: null, name: null, role: null, attendance: null, pool: null, value: null, yes: /^yes$/i, kitchenMatcher: /kitchen/i };
+  let dateCols = [];       // ['05/08','06/08',...]
+  let employees = [];      // ['Kitchen','Krisu',...]
+  let attendance = {};     // attendance[date][name] = 'Yes'|'No'
+  let weights = {};        // weights[date][name] = numeric (optional)
+  let pools = {};          // pools[date] = number
 
-  $("#toggleDebug").addEventListener('click', () => debug.classList.toggle('hidden'));
-
-  document.getElementById('dlSample').addEventListener('click', () => {
-    const sample = [
-      ['Date','Employee','Position','Present','Total Pool','Points'], // odd headers to test mapping
-      ['05/08','Kitchen','Kitchen','Yes','1000',''],
-      ['05/08','Juan','FOH','Yes','', '12'],
-      ['05/08','Alina','FOH','Yes','', '8'],
-      ['05/08','Ryu','FOH','No','', '10'],
-      ['06/08','Kitchen','Kitchen','Yes','1200',''],
-      ['06/08','Juan','FOH','No','', '10'],
-      ['06/08','Alina','FOH','Yes','', '16'],
-      ['06/08','Ryu','FOH','Yes','', '12'],
-    ].map(r=>r.join(';')).join('\n');
-    const blob = new Blob([sample], {type:'text/csv'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'sample_map.csv';
-    a.click();
-  });
-
-  $("#file").addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  weeklyFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if(!file) return;
     const text = await file.text();
-    handleRawCSV(text, { name: file.name, size: file.size });
-  });
-
-  ;['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
-  ;['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
-  dropzone.addEventListener('drop', async (e) => {
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const text = await file.text();
-    handleRawCSV(text, { name: file.name, size: file.size });
-  });
-
-  $("#parsePaste").addEventListener('click', () => {
-    const txt = $("#pasteArea").value || '';
-    if (!txt.trim()) { addAlert('Paste area is empty.'); return; }
-    handleRawCSV(txt, { name: 'pasted.csv', size: txt.length });
-  });
-
-  $("#applyMap").addEventListener('click', () => {
-    CONFIG.date = mapDate.value; CONFIG.name = mapName.value; CONFIG.role = mapRole.value;
-    CONFIG.attendance = mapAtt.value; CONFIG.pool = mapPool.value; CONFIG.value = mapVal.value;
-    if (!CONFIG.date || !CONFIG.name || !CONFIG.role || !CONFIG.attendance || !CONFIG.pool || !CONFIG.value){
-      addAlert('Please map all required fields.');
-      return;
-    }
-    // Re-run last parsed rows with mapping
-    if (window.__lastRows) computeAndRender(window.__lastRows);
-  });
-
-  function handleRawCSV(text, info){
     try {
-      const parsed = parseDelimited(text);
-      const rows = toObjects(parsed.rows, parsed.headers);
-      debugOut.textContent = JSON.stringify({ file: info, detectedDelimiter: parsed.delimiter, header: parsed.headers, rowsParsed: rows.length }, null, 2);
-      if (!rows.length) { addAlert('No rows parsed. Try the paste option or check delimiter.'); showMapper(parsed.headers); return; }
-      showMapper(Object.keys(rows[0]));
-      window.__lastRows = rows;
-      addAlert('Columns detected. Map them, then click "Apply Mapping".');
-    } catch (err){
-      addAlert('Error parsing CSV: ' + err.message);
+      const {headers, rows} = parseCsvAuto(text);
+      loadWeekly(headers, rows);
+      renderPoolEditor();
+      compute();
+    } catch (err) {
+      addAlert('Weekly CSV parse error: ' + err.message);
     }
+  });
+
+  weightsFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if(!file) return;
+    const text = await file.text();
+    try {
+      const {headers, rows} = parseCsvAuto(text);
+      loadWeights(headers, rows);
+      compute();
+    } catch (err) {
+      addAlert('Weights CSV parse error: ' + err.message);
+    }
+  });
+
+  recomputeBtn.addEventListener('click', () => {
+    for (const d of dateCols) {
+      const el = document.getElementById('pool_'+slug(d));
+      if (el) pools[d] = num(el.value);
+    }
+    compute();
+  });
+
+  function loadWeekly(headers, rows){
+    const empIdx = 0;
+    const dateIdxs = headers.map((h,i) => ({h,i})).filter(x => /^\\d{2}\\/\\d{2}$/.test(x.h));
+    if (!dateIdxs.length) throw new Error('No date-like columns found (expected headers like 05/08).');
+
+    dateCols = dateIdxs.map(d => d.h);
+    employees = rows.map(r => r[empIdx]).filter(x => String(x).trim().length>0);
+
+    attendance = {};
+    for (const {h,i} of dateIdxs) {
+      attendance[h] = {};
+      for (const r of rows) {
+        const name = r[empIdx];
+        attendance[h][name] = String(r[i]||'').trim();
+      }
+    }
+    pools = {}; for (const d of dateCols) pools[d] = pools[d] || 0;
+    clearAlerts();
+    addAlert(`Loaded weekly CSV. Found ${employees.length} employees and ${dateCols.length} date columns.`);
   }
 
-  function showMapper(headers){
-    mapper.classList.remove('hidden');
-    [mapDate,mapName,mapRole,mapAtt,mapPool,mapVal].forEach(sel => {
-      sel.innerHTML = '<option value="">— choose —</option>' + headers.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
-    });
-    // try auto-guess
-    autoGuess(headers);
+  function loadWeights(headers, rows){
+    const empIdx = 0;
+    const dateIdxs = headers.map((h,i) => ({h,i})).filter(x => /^\\d{2}\\/\\d{2}$/.test(x.h));
+    if (!dateIdxs.length) throw new Error('No date-like columns in weights file.');
+
+    weights = {};
+    for (const {h,i} of dateIdxs) {
+      weights[h] = {};
+      for (const r of rows) {
+        const name = r[empIdx];
+        weights[h][name] = num(r[i]);
+      }
+    }
+    clearAlerts();
+    addAlert(`Loaded weights CSV. Using Value/4 weighting when enabled.`);
   }
 
-  function autoGuess(headers){
-    function pick(re){ return headers.find(h => re.test(h.toLowerCase().replace(/\s+/g,''))) || ''; }
-    mapDate.value = pick(/^date$/) || pick(/day|dd|datum/);
-    mapName.value = pick(/^name$|^employee$/);
-    mapRole.value = pick(/^role$|^position$/);
-    mapAtt.value = pick(/^attendance$|^present$/);
-    mapPool.value = pick(/^pool$|^totalpool$|^tips$|^total$/);
-    mapVal.value = pick(/^value$|^points$|^c$/);
+  function renderPoolEditor(){
+    poolEditor.innerHTML = dateCols.map(d => {
+      const id = 'pool_'+slug(d);
+      const val = pools[d] ?? '';
+      return `<div class="pool">
+        <div class="lbl">${esc(d)} Pool (€)</div>
+        <input id="${id}" type="number" step="0.01" value="${esc(val)}" placeholder="0.00">
+      </div>`;
+    }).join('');
   }
 
-  function computeAndRender(rows){
-    // Normalize into CONFIG mapping
-    const normalized = rows.map(r => ({
-      [CONFIG.date]: r[CONFIG.date],
-      [CONFIG.name]: r[CONFIG.name],
-      [CONFIG.role]: r[CONFIG.role],
-      [CONFIG.attendance]: r[CONFIG.attendance],
-      [CONFIG.pool]: r[CONFIG.pool],
-      [CONFIG.value]: r[CONFIG.value],
-    }));
-
-    const groups = groupBy(normalized, r => r[CONFIG.date]);
+  function compute(){
+    if (!dateCols.length || !employees.length) return;
     const perDayRows = [];
     const totalsByName = new Map();
     let totalPoolAll = 0, allocatedAll = 0, unallocatedAll = 0;
 
-    for (const [date, items] of groups) {
-      const pool = firstNonEmpty(items.map(r => r[CONFIG.pool]));
-      const poolNum = num(pool);
-      totalPoolAll += poolNum;
+    for (const d of dateCols) {
+      const pool = num(pools[d]);
+      totalPoolAll += pool;
 
-      const kitchenYes = items.some(r => isKitchen(r) && isYes(r[CONFIG.attendance]));
-      const kitchenAmount = kitchenYes ? 0.25 * poolNum : 0;
-      const staffAvailable = poolNum - kitchenAmount;
+      const kitchenYes = isYes((attendance[d]||{})['Kitchen'] || '');
+      const kitchenAmount = kitchenYes ? 0.25 * pool : 0;
+      const staffAvailable = pool - kitchenAmount;
 
-      const presentStaff = items.filter(r => !isKitchen(r) && isYes(r[CONFIG.attendance]));
-      const weights = presentStaff.map(r => ({ r, w: num(r[CONFIG.value]) / 4 }));
-      const totalWeight = sum(weights.map(w => w.w));
-      const unallocated = totalWeight > 0 ? 0 : Math.max(0, staffAvailable);
-      unallocatedAll += unallocated;
+      const present = employees.filter(n => n && n!=='Kitchen' && isYes((attendance[d]||{})[n]||''));
 
-      const staff75 = 0.75 * poolNum;
+      const useW = useWeights.checked && weights && weights[d];
+      const wPairs = present.map(n => {
+        const v = useW ? (num(weights[d][n]) / 4) : 1;
+        return {name:n, w: Math.max(0, v)};
+      });
+      const totalW = wPairs.reduce((a,b)=>a+b.w,0);
 
-      for (const r of items) {
+      for (const name of employees) {
         const base = {
-          Date: date,
-          Name: r[CONFIG.name],
-          Role: r[CONFIG.role],
-          Attendance: r[CONFIG.attendance],
-          Pool: poolNum ? poolNum.toFixed(2) : '',
+          Date: d,
+          Name: name,
+          Attendance: (attendance[d]||{})[name] || '',
+          Pool: pool ? pool.toFixed(2) : '',
           Kitchen25: kitchenAmount.toFixed(2),
-          Staff75: staff75.toFixed(2),
+          Staff75: (0.75*pool).toFixed(2),
           Weight: '',
           Allocation: '0.00',
         };
-
-        if (isKitchen(r)) {
+        if (name === 'Kitchen') {
           base.Weight = '';
           base.Allocation = kitchenAmount.toFixed(2);
-        } else if (isYes(r[CONFIG.attendance])) {
-          const w = num(r[CONFIG.value]) / 4;
-          base.Weight = w.toFixed(2);
-          const share = totalWeight > 0 ? (w / totalWeight) * staffAvailable : 0;
+        } else if (isYes(base.Attendance)) {
+          const w = wPairs.find(x=>x.name===name)?.w || 0;
+          base.Weight = w ? w.toFixed(2) : '';
+          const share = totalW>0 ? (w/totalW)*staffAvailable : (present.length? (staffAvailable/present.length):0);
           base.Allocation = share.toFixed(2);
         }
         perDayRows.push(base);
 
-        const key = r[CONFIG.name] || '(Unnamed)';
-        const prev = totalsByName.get(key) || { Name:key, Role:r[CONFIG.role], Days:0, Total:0 };
-        if (isKitchen(r)) {
+        const prev = totalsByName.get(name) || { Name:name, Days:0, Total:0 };
+        if (name==='Kitchen') {
           if (kitchenYes) { prev.Days += 1; prev.Total += kitchenAmount; }
-        } else if (isYes(r[CONFIG.attendance])) {
-          prev.Days += 1;
-          prev.Total += num(base.Allocation);
+        } else if (isYes(base.Attendance)) {
+          prev.Days += 1; prev.Total += num(base.Allocation);
         }
-        totalsByName.set(key, prev);
+        totalsByName.set(name, prev);
       }
-      const allocatedThisDay = kitchenAmount + (totalWeight > 0 ? staffAvailable : 0);
+
+      const allocatedThisDay = kitchenAmount + (totalW>0 || present.length>0 ? staffAvailable : 0);
+      if (!(totalW>0 || present.length>0)) unallocatedAll += staffAvailable;
       allocatedAll += allocatedThisDay;
     }
 
-    // Stats
     const cards = [
       {k:'Total Pool', v: euro(totalPoolAll)},
       {k:'Allocated', v: euro(allocatedAll)},
       {k:'Unallocated', v: euro(unallocatedAll)},
-      {k:'Rule', v: 'Kitchen 25% if Yes; Staff 75% weighted by Value/4'},
+      {k:'Mode', v: useWeights.checked ? 'Weighted by Value/4' : 'Equal split among present'},
     ];
     stats.innerHTML = cards.map(c => `<div class="stat"><div class="k">${esc(c.k)}</div><div class="v">${esc(c.v)}</div></div>`).join('');
 
-    // Tables
-    renderTable(dailyHead, dailyBody, perDayRows, ['Date','Name','Role','Attendance','Pool','Kitchen25','Staff75','Weight','Allocation'], ['Pool','Kitchen25','Staff75','Weight','Allocation']);
+    renderTable(dailyHead, dailyBody, perDayRows, ['Date','Name','Attendance','Pool','Kitchen25','Staff75','Weight','Allocation'], ['Pool','Kitchen25','Staff75','Weight','Allocation']);
     const totals = Array.from(totalsByName.values()).sort((a,b)=>b.Total-a.Total);
-    renderTable(totalHead, totalBody, totals, ['Name','Role','Days','Total'], ['Total']);
+    renderTable(totalHead, totalBody, totals, ['Name','Days','Total'], ['Total']);
 
-    // Chart
     renderChart(chartCanvas, totals.map(t=>t.Name), totals.map(t=>t.Total));
-    alerts.innerHTML = ''; // clear alerts on success
   }
 
-  // ===== CSV Parsing (delimiter auto-detect: , ; \\t | ) =====
-  function parseDelimited(text){
+  // ===== Utils =====
+  function parseCsvAuto(text){
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
     const firstLine = text.split(/\\r?\\n/)[0] || '';
-    const candidates = [',',';','\\t','|'];
-    const counts = candidates.map(d => (firstLine.match(new RegExp(escapeReg(d), 'g')) || []).length);
-    const delimiter = candidates[counts.indexOf(Math.max(...counts))] || ',';
-    const rows = parseWithDelimiter(text, delimiter);
-    return { delimiter, headers: rows[0] || [], rows };
+    const cands = [',',';','\\t','|'];
+    const counts = cands.map(d => (firstLine.match(new RegExp(escapeReg(d),'g'))||[]).length);
+    const delim = cands[counts.indexOf(Math.max(...counts))] || ',';
+    const rows = parseWithDelimiter(text, delim);
+    const headers = rows[0] || [];
+    const body = rows.slice(1).filter(r => r.length && r.some(v=>String(v).trim().length));
+    return { headers, rows: body };
   }
-  function escapeReg(d){ return d.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); }
   function parseWithDelimiter(text, delim){
     const out=[]; let i=0,cur='',row=[],inQ=false;
     while(i<text.length){
       const c=text[i];
       if(inQ){
-        if(c=='\"'){ if(text[i+1]=='\"'){cur+='\"';i++;} else inQ=false; }
-        else cur+=c;
+        if(c=='\"'){ if(text[i+1]=='\"'){cur+='\"';i++;} else inQ=false; } else cur+=c;
       } else {
         if(c=='\"') inQ=true;
         else if(c===delim){ row.push(cur); cur=''; }
-        else if(c=='\\n'){ row.push(cur); pushRow(row,out); row=[]; cur=''; }
-        else if(c=='\\r'){ /* ignore */ }
+        else if(c=='\\n'){ row.push(cur); out.push(row.map(c=>String(c).replace(/\\u00A0/g,' ').trim())); row=[]; cur=''; }
+        else if(c=='\\r'){}
         else cur+=c;
       }
       i++;
     }
-    if(cur.length || row.length){ row.push(cur); pushRow(row,out); }
+    if(cur.length||row.length){ row.push(cur); out.push(row.map(c=>String(c).replace(/\\u00A0/g,' ').trim())); }
     return out;
   }
-  function pushRow(row,out){ out.push(row.map(c => String(c).replace(/\\u00A0/g,' ').trim())); }
-  function toObjects(rows, header){
-    if (!rows.length) return [];
-    const hdr = rows[0];
-    const body = rows.slice(1).filter(r => r.length && r.some(v => String(v).trim().length));
-    return body.map(r => { const o={}; hdr.forEach((h,i)=>o[h]=r[i]??''); return o; });
-  }
-
-  // ===== Helpers =====
-  function groupBy(arr, keyFn) { const m = new Map(); for (const it of arr){ const k=keyFn(it); if(!m.has(k)) m.set(k, []); m.get(k).push(it); } return m; }
-  function firstNonEmpty(arr){ for(const v of arr){ if (v!==undefined && v!==null && String(v).trim()!=='') return v; } return ''; }
-  function isKitchen(row){ const val = (row[CONFIG.role] || row[CONFIG.name] || '').toString(); return /kitchen/i.test(val); }
-  function isYes(v){ return CONFIG.yes.test(String(v||'')); }
+  function slug(s){ return String(s).replace(/[^a-z0-9]+/gi,'_'); }
+  function isYes(v){ return /^yes$/i.test(String(v||'')); }
   function num(v){ if (v===null||v===undefined||v==='') return 0; const s=String(v).replace(/\\s+/g,'').replace(',','.'); const n=Number(s); return isFinite(n)?n:0; }
-  function sum(a){ return a.reduce((x,y)=>x+num(y),0); }
   function euro(n){ return formatNum(n) + ' €'; }
-  function isNumberLike(v){ return typeof v==='number' || (/^-?\\d+(\\.\\d+)?$/.test(String(v))); }
   function formatNum(v){ const n=typeof v==='number'?v:Number(v); return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function esc(s){ return String(s).replace(/[&<>\"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c])); }
+  function clearAlerts(){ alerts.innerHTML=''; }
+  function addAlert(msg){ const d=document.createElement('div'); d.className='alert'; d.textContent=msg; alerts.appendChild(d); }
   function renderTable(headEl, bodyEl, rows, cols, rightCols=[]) {
     headEl.innerHTML = '<tr>' + cols.map(c=>`<th>${esc(c)}</th>`).join('') + '</tr>';
     bodyEl.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
       const v = r[c] ?? '';
       const cls = rightCols.includes(c) ? ' class="right"' : '';
-      return `<td${cls}>${esc(isNumberLike(v) ? formatNum(v) : v)}</td>`;
+      return `<td${cls}>${esc(typeof v==='number' ? formatNum(v) : v)}</td>`;
     }).join('') + '</tr>').join('');
   }
   function renderChart(canvas, labels, values){
