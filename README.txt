@@ -1,22 +1,22 @@
-Shang Shi — Weighted Tip Allocator
+Shang Shi — Weighted Tip Allocator (v2)
 
-Implements your Excel formulas:
-- E = IF(D="Yes", C/4, 0)              → weight for present non‑kitchen
-- SUMIFS(E:D="Yes") → total weight     → equivalent to your $Y$1 / $X$1
-- Staff share = 0.75 * Pool * (E / SUM(E where D="Yes"))
-- Kitchen share = 0.25 * Pool if Kitchen Attendance = "Yes"
-- Final = share * Pool (same result once combined above)
+What changed
+- Robust CSV parser with delimiter auto‑detect (comma, semicolon, tab, pipe)
+- UTF‑8/BOM handling and whitespace normalization
+- Debug panel to see detected delimiter, headers, row count, and sample keys
+- Clear alerts if required columns are missing or if no rows were parsed
 
-CSV columns (case‑insensitive): Date, Name, Role, Attendance, Pool, Value
-- “Value” matches your Column C used in the E formula.
+Logic (unchanged)
+- Kitchen gets 25% of Pool if Kitchen Attendance = "Yes"
+- Remaining 75% distributed among present non‑kitchen staff, weighted by Value/4
+- Totals aggregated by Name
+
+Required headers (case-insensitive): Date, Name, Role, Attendance, Pool, Value
 
 Usage
-1) Open index.html → Upload your CSV (or deploy the folder to GitHub Pages/Netlify/Vercel).
-2) See Daily Allocation and Totals by Person. Missing Pool or Value fields are flagged.
-
-Notes
-- If no non‑kitchen staff are present on a day, the 75% staff portion is marked Unallocated for that day.
-- Kitchen’s allocation only triggers when Kitchen attendance is “Yes”.
+1) Open index.html → Upload your CSV (EU Excel exports with ; are fine).
+2) Use the Debug button if “nothing happens” — it will show exactly what was detected.
+3) Deploy as static site (GitHub Pages / Netlify / Vercel).
 
 Security
-- 100% static, client‑side. CSV stays in the browser.
+- Client‑side only; your data stays in the browser.

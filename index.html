@@ -3,27 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Shang Shi — Weighted Tip Allocator</title>
-  <meta name="description" content="Kitchen 25% if present. Remaining 75% distributed by weights: weight = Value/4 for each present person.">
+  <title>Shang Shi — Weighted Tip Allocator (v2)</title>
+  <meta name="description" content="Kitchen 25% if present. Remaining 75% distributed by weights: weight = Value/4 for each present person. Robust CSV parsing.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="wrap">
   <header class="topbar">
-    <div class="brand">Shang&nbsp;Shi <span>Tip Allocator</span></div>
+    <div class="brand">Shang&nbsp;Shi <span>Tip Allocator</span> <small class="small">v2</small></div>
     <div class="actions">
       <label class="file-btn">
         <input id="file" type="file" accept=".csv,text/csv">
         <span>Upload CSV</span>
       </label>
       <button id="dlSample" class="btn ghost">Download Sample CSV</button>
+      <button id="toggleDebug" class="btn ghost">Debug</button>
     </div>
   </header>
 
   <section class="hero">
     <h1>Kitchen 25% • Staff 75% (Weighted)</h1>
     <p>Non‑kitchen staff get the remaining 75% proportionally by <em>weight</em>, where <code>weight = Value ÷ 4</code> for each present person. Kitchen gets 25% if present.</p>
-    <div class="tips">CSV columns (case‑insensitive): <strong>Date, Name, Role, Attendance, Pool, Value</strong>. “Value” is your Excel column C used in <code>E = IF(D=&quot;Yes&quot;, C/4, 0)</code>.</div>
+    <div class="tips">CSV columns (case‑insensitive): <strong>Date, Name, Role, Attendance, Pool, Value</strong>. Works with comma, semicolon, tab, or pipe delimited CSV.</div>
   </section>
 
   <section id="alerts" class="alerts"></section>
@@ -48,6 +49,11 @@
       <thead id="thead-total"></thead>
       <tbody id="tbody-total"></tbody>
     </table>
+  </section>
+
+  <section id="debug" class="debug hidden">
+    <h3>Debug</h3>
+    <pre id="debugOut"></pre>
   </section>
 
   <footer class="foot">
