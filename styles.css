@@ -1,0 +1,32 @@
+/* Clean dark UI */
+:root{--bg:#0b0b0c;--panel:#121214;--muted:#9a9aa0;--text:#f4f4f5;--brand:#d4af37;--line:#212126}
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:22px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.brand{font-weight:800;letter-spacing:.2px}.brand span{color:var(--brand)}
+.actions{display:flex;gap:8px;align-items:center}
+.file-btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
+  padding:10px 14px;border-radius:12px;cursor:pointer}
+.file-btn input{display:none}
+.btn{background:var(--panel);border:1px solid var(--line);padding:10px 14px;border-radius:12px;color:var(--text);cursor:pointer}
+.btn.ghost{background:transparent}
+.hero{border:1px solid var(--line);background:linear-gradient(180deg,rgba(212,175,55,.08),rgba(212,175,55,.03));
+  border-radius:18px;padding:18px 20px;margin-bottom:16px}
+.hero h1{margin:0 0 6px;font-size:24px}.hero p{margin:0 0 6px;color:var(--muted)}
+.tips{font-size:13px;color:var(--muted)}
+.alerts{margin:10px 0}
+.alert{background:#221; border:1px solid #533; color:#fbb; padding:10px 12px; border-radius:10px; margin-bottom:8px; font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:12px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat .k{font-size:13px;color:var(--muted)}.stat .v{font-size:18px;font-weight:700}
+.chart-block{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;margin:10px 0 14px 0}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;margin-top:12px}
+.table-wrap h2{padding:12px 12px 0 12px;margin:0;color:var(--muted)}
+table{border-collapse:collapse;width:100%;min-width:960px}
+thead th{position:sticky;top:0;background:#16161a;border-bottom:1px solid var(--line);text-align:left;padding:10px 8px;font-weight:700}
+tbody td{border-bottom:1px solid #1b1b20;padding:8px}
+tbody tr:hover{background:#121218}
+.foot{margin-top:10px;color:var(--muted)}
+.right{text-align:right}
+.small{font-size:12px;color:var(--muted)}
